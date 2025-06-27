@@ -16,8 +16,9 @@ public class Service {
     List<User> users = new ArrayList<>();
     List<Booking> bookings = new ArrayList<>();
 
-    Map<Integer, User> userIds = new HashMap<Integer, User>();
-    Map<Integer, Room> roomIds = new HashMap<Integer, Room>();
+    // Using hashmaps for quick lookup
+    Map<Integer, User> userIds = new HashMap<>();
+    Map<Integer, Room> roomIds = new HashMap<>();
 
     public void setRoom(int roomNumber, RoomType roomType, int roomPricePerNight) {
         if (roomIds.containsKey(roomNumber) ) {
@@ -42,58 +43,85 @@ public class Service {
     }
 
     public void bookRoom(int userId, int roomNumber, Date checkIn, Date checkOut) {
-        if (checkOut.before(checkIn)) {
-            throw new IllegalArgumentException("Invalid date range.");
-        }
+        validateDateRange(checkIn, checkOut);
 
-        User user = userIds.get(userId);
-        if (user == null) {
-            throw new NoSuchElementException("User not found.");
-        }
+        User user = this.findUser(userId);
+        Room room = this.findRoom(roomNumber);
 
-        Room room = roomIds.get(roomNumber);
-        if (room == null) {
-            throw new NoSuchElementException("Room not found.");
-        }
+        checkRoomAvailability(roomNumber, checkIn, checkOut);
 
-        // Check availability
-        for (Booking b : bookings) {
-            if (b.getRoom().getNumber() == roomNumber &&
-                    !(checkOut.before(b.getCheckIn()) || checkIn.after(b.getCheckOut()))) {
-                throw new IllegalStateException("Room not available for the given period.");
-            }
-        }
-
-        long nights = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24);
-        if (nights <= 0) {
-            throw new IllegalArgumentException("Booking must be at least 1 night.");
-        }
-
+        long nights = calculateNights(checkIn, checkOut);
         int totalPrice = (int) (nights * room.getPricePerNight());
-        if (user.getBalance() < totalPrice) {
-            throw new IllegalStateException("Not enough balance.");
-        }
 
-        user.setBalance( user.getBalance() - totalPrice);
+        this.chargeUser(user, totalPrice);
+
         bookings.addFirst(new Booking(user, room, checkIn, checkOut));
         System.out.println("Booking successful.");
     }
 
     public void printAll() {
         System.out.println("Rooms:");
-        for (Room room : rooms) {
-            System.out.println(room);
-        }
+        rooms.forEach(System.out::println);
+
+        System.out.println("--------------------");
+
         System.out.println("Bookings:");
-        for (Booking booking : bookings) {
-            System.out.println(booking);
-        }
+        bookings.forEach(System.out::println);
     }
 
     public void printAllUsers() {
-        for (User user : users) {
-            System.out.println(user);
+        users.forEach(System.out::println);
+    }
+
+    private void validateDateRange(Date checkIn, Date checkOut) {
+        if (checkOut.before(checkIn)) {
+            throw new IllegalArgumentException("Invalid date range.");
         }
     }
+
+    private User findUser(int userId) {
+        User user = userIds.get(userId);
+        if (user == null) {
+            throw new NoSuchElementException("User not found.");
+        }
+        return user;
+    }
+
+    private Room findRoom(int roomNumber) {
+        Room room = roomIds.get(roomNumber);
+        if (room == null) {
+            throw new NoSuchElementException("Room not found.");
+        }
+        return room;
+    }
+
+    private void checkRoomAvailability(int roomNumber, Date checkIn, Date checkOut) {
+        boolean isUnavailable = bookings.stream().anyMatch(b ->
+                b.getRoom().getNumber() == roomNumber &&
+                        !(checkOut.before(b.getCheckIn()) || checkIn.after(b.getCheckOut()))
+        );
+
+        if (isUnavailable) {
+            throw new IllegalStateException("Room not available for the given period - " +
+                    "From: " + checkIn + ", To: " + checkOut);
+        }
+    }
+
+    private long calculateNights(Date checkIn, Date checkOut) {
+        long diffMillis = checkOut.getTime() - checkIn.getTime();
+        long nights = diffMillis / (1000 * 60 * 60 * 24);
+        if (nights <= 0) {
+            throw new IllegalArgumentException("Booking must be at least 1 night.");
+        }
+        return nights;
+    }
+
+    private void chargeUser(User user, int amount) {
+        if (user.getBalance() < amount) {
+            throw new IllegalStateException("Not enough balance for user id: " + user.getId());
+        }
+        user.setBalance(user.getBalance() - amount);
+    }
+
 }
 
