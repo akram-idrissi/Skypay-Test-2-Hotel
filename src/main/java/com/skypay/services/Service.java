@@ -16,46 +16,57 @@ public class Service {
     List<User> users = new ArrayList<>();
     List<Booking> bookings = new ArrayList<>();
 
-    // Using hashmaps for quick lookup
-    Map<Integer, User> userIds = new HashMap<>();
-    Map<Integer, Room> roomIds = new HashMap<>();
-
     public void setRoom(int roomNumber, RoomType roomType, int roomPricePerNight) {
-        if (roomIds.containsKey(roomNumber) ) {
-            return; // room already exists
-        }
+        Room existingRoom = findRoomByNumber(roomNumber);
 
-        // saving in hashmap for quick lookup
-        Room room = new Room(roomNumber, roomType, roomPricePerNight);
-        roomIds.put(roomNumber, room);
-        rooms.addFirst(room);
+        if (existingRoom != null) {
+            existingRoom.setType(roomType);
+            existingRoom.setPricePerNight(roomPricePerNight);
+        } else {
+            Room room = new Room(roomNumber, roomType, roomPricePerNight);
+            rooms.addFirst(room);
+        }
     }
 
     public void setUser(int userId, int balance) {
-        if (userIds.containsKey(userId) ) {
-            return; // user already exists
-        }
+        User existingUser = findUserById(userId);
 
-        // saving in hashmap for quick lookup
-        User user = new User(userId, balance);
-        userIds.put(userId, user);
-        users.addFirst(user);
+        if (existingUser != null) {
+            existingUser.setBalance(balance);
+        } else {
+            User user = new User(userId, balance);
+            users.addFirst(user);
+        }
     }
 
     public void bookRoom(int userId, int roomNumber, Date checkIn, Date checkOut) {
         validateDateRange(checkIn, checkOut);
 
-        User user = this.findUser(userId);
-        Room room = this.findRoom(roomNumber);
+        User user = findUserById(userId);
+        if (user == null) {
+            throw new NoSuchElementException("User not found.");
+        }
+
+        Room room = findRoomByNumber(roomNumber);
+        if (room == null) {
+            throw new NoSuchElementException("Room not found.");
+        }
 
         checkRoomAvailability(roomNumber, checkIn, checkOut);
 
         long nights = calculateNights(checkIn, checkOut);
         int totalPrice = (int) (nights * room.getPricePerNight());
 
-        this.chargeUser(user, totalPrice);
+        chargeUser(user, totalPrice);
 
-        bookings.addFirst(new Booking(user, room, checkIn, checkOut));
+        Booking booking = new Booking(
+                new User(user.getId(), user.getBalance()),
+                new Room(room.getNumber(), room.getType(), room.getPricePerNight()),
+                checkIn,
+                checkOut
+        );
+
+        bookings.addFirst(booking);
         System.out.println("Booking successful.");
     }
 
@@ -73,32 +84,30 @@ public class Service {
         users.forEach(System.out::println);
     }
 
+    private User findUserById(int userId) {
+        return users.stream()
+                .filter(user -> user.getId() == userId)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private Room findRoomByNumber(int roomNumber) {
+        return rooms.stream()
+                .filter(room -> room.getNumber() == roomNumber)
+                .findFirst()
+                .orElse(null);
+    }
+
     private void validateDateRange(Date checkIn, Date checkOut) {
         if (checkOut.before(checkIn)) {
             throw new IllegalArgumentException("Invalid date range.");
         }
     }
 
-    private User findUser(int userId) {
-        User user = userIds.get(userId);
-        if (user == null) {
-            throw new NoSuchElementException("User not found.");
-        }
-        return user;
-    }
-
-    private Room findRoom(int roomNumber) {
-        Room room = roomIds.get(roomNumber);
-        if (room == null) {
-            throw new NoSuchElementException("Room not found.");
-        }
-        return room;
-    }
-
     private void checkRoomAvailability(int roomNumber, Date checkIn, Date checkOut) {
-        boolean isUnavailable = bookings.stream().anyMatch(b ->
-                b.getRoom().getNumber() == roomNumber &&
-                        !(checkOut.before(b.getCheckIn()) || checkIn.after(b.getCheckOut()))
+        boolean isUnavailable = bookings.stream().anyMatch(booking ->
+                booking.getRoom().getNumber() == roomNumber &&
+                        !(checkOut.before(booking.getCheckIn()) || checkIn.after(booking.getCheckOut()))
         );
 
         if (isUnavailable) {
@@ -122,6 +131,4 @@ public class Service {
         }
         user.setBalance(user.getBalance() - amount);
     }
-
 }
-
